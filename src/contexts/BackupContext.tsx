@@ -46,8 +46,15 @@ export function BackupProvider({ children }: { children: ReactNode }) {
 
   const getDriveFileId = async (token: string, filename: string): Promise<string | null> => {
     try {
-      const q = encodeURIComponent(`name='${filename}' and trashed=false`);
-      const res = await fetch(`https://www.googleapis.com/drive/v3/files?q=${q}&spaces=drive`, {
+      // Query para buscar arquivo por nome (sem filtro de mimeType para ser mais flexível)
+      const query = `name='${filename}' and trashed=false`;
+      const q = encodeURIComponent(query);
+      const url = `https://www.googleapis.com/drive/v3/files?q=${q}&fields=files(id,name,modifiedTime,size)`;
+
+      console.log('Searching Drive with query:', query);
+      console.log('Drive API URL:', url);
+
+      const res = await fetch(url, {
         headers: { Authorization: `Bearer ${token}` }
       });
 
@@ -61,8 +68,16 @@ export function BackupProvider({ children }: { children: ReactNode }) {
       }
 
       const data = await res.json();
-      console.log('Drive files found:', data.files?.length || 0);
-      return data.files && data.files.length > 0 ? data.files[0].id : null;
+      console.log('Drive API response:', data);
+      console.log('Files found:', data.files?.length || 0);
+
+      if (data.files && data.files.length > 0) {
+        console.log('First file:', data.files[0].name, 'ID:', data.files[0].id);
+        return data.files[0].id;
+      }
+
+      console.log('No files found with name:', filename);
+      return null;
     } catch (e) {
       console.error('getDriveFileId error:', e);
       throw e;
@@ -184,11 +199,16 @@ export function BackupProvider({ children }: { children: ReactNode }) {
     setSyncError(null);
 
     try {
-      console.log('Restoring from Drive...');
+      console.log('=== RESTORE START ===');
+      console.log('Token available:', !!token);
+      console.log('Token first 20 chars:', token.substring(0, 20) + '...');
+
       const fileId = await getDriveFileId(token, 'nutriai_backup.json');
+      console.log('File ID result:', fileId);
 
       if (!fileId) {
         console.log('No backup file found on Drive');
+        setSyncError('Nenhum backup encontrado no Drive. Salve um backup primeiro.');
         setSyncing(false);
         return null;
       }

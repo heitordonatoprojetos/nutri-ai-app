@@ -10,7 +10,17 @@
       "Bash(gh workflow:*)",
       "WebFetch(domain:github.com)",
       "Bash(curl -s \"https://api.github.com/repos/heitordonatoprojetos/nutri-ai-app/actions/runs?per_page=1\")",
-      "Bash(curl -s \"https://api.github.com/repos/heitordonatoprojetos/nutri-ai-app/actions/runs/24150614009/logs\" -H \"Accept: application/vnd.github+json\")"
+      "Bash(curl -s \"https://api.github.com/repos/heitordonatoprojetos/nutri-ai-app/actions/runs/24150614009/logs\" -H \"Accept: application/vnd.github+json\")",
+      "Bash(npm run:*)",
+      "Bash(npx --yes serve@latest dist -l 5173)",
+      "Bash(curl -s http://localhost:5173)",
+      "Bash(npm install:*)",
+      "Bash(cloudflared tunnel:*)",
+      "Bash(jobs)",
+      "Bash(pkill -f \"serve.*5173\")",
+      "Bash(npx serve@latest dist -l 5173 --host 0.0.0.0)",
+      "Bash(pkill -f \"serve\")",
+      "Bash(npx vite:*)"
     ]
   }
 }
