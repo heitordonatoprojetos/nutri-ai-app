@@ -59,7 +59,6 @@ jobs:
         with:
           distribution: 'zulu'
           java-version: '17'
-          cache: 'gradle'
 
       - name: Verify Java version
         run: java -version
@@ -83,18 +82,12 @@ jobs:
       - name: Capacitor sync Android
         run: npx cap sync android
 
-      - name: Clear Gradle cache for bcprov conflict
-        run: rm -rf ~/.gradle/caches/jars-9/18366b31678c0171857be093a3b8ec22 || true
-
-      - name: Cache Gradle packages
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-          key: ${{ runner.os }}-gradle-v2-${{ hashFiles('android/**/*.gradle*', 'android/**/gradle-wrapper.properties') }}
-          restore-keys: |
-            ${{ runner.os }}-gradle-v2-
+      - name: Clear ALL Gradle cache to avoid bcprov conflict
+        run: |
+          echo "Clearing entire Gradle cache..."
+          rm -rf ~/.gradle/caches || true
+          rm -rf ~/.gradle/daemon || true
+          echo "Gradle cache cleared."
 
       - name: Inject mock google-services.json for Firebase compilation
         run: |
@@ -165,7 +158,6 @@ jobs:
         with:
           distribution: 'zulu'
           java-version: '17'
-          cache: 'gradle'
 
       - name: Verify Java version
         run: java -version
@@ -188,18 +180,12 @@ jobs:
       - name: Capacitor sync Android
         run: npx cap sync android
 
-      - name: Clear Gradle cache for bcprov conflict
-        run: rm -rf ~/.gradle/caches/jars-9/18366b31678c0171857be093a3b8ec22 || true
-
-      - name: Cache Gradle packages
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-          key: ${{ runner.os }}-gradle-v2-${{ hashFiles('android/**/*.gradle*', 'android/**/gradle-wrapper.properties') }}
-          restore-keys: |
-            ${{ runner.os }}-gradle-v2-
+      - name: Clear ALL Gradle cache to avoid bcprov conflict
+        run: |
+          echo "Clearing entire Gradle cache..."
+          rm -rf ~/.gradle/caches || true
+          rm -rf ~/.gradle/daemon || true
+          echo "Gradle cache cleared."
 
       - name: Inject mock google-services.json for Firebase compilation
         run: |
