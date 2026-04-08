@@ -108,7 +108,12 @@ jobs:
 
       - name: Build Debug APK
         working-directory: ./android
-        run: ./gradlew assembleDebug --no-daemon --stacktrace
+        run: |
+          export JAVA_HOME=$JAVA_HOME_17_X64
+          export PATH=$JAVA_HOME/bin:$PATH
+          echo "Using JAVA_HOME: $JAVA_HOME"
+          java -version
+          ./gradlew assembleDebug --no-daemon --stacktrace
 
       - name: Verify APK was created
         run: |
