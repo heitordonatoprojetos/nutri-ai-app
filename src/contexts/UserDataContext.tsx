@@ -1,9 +1,5 @@
 import { createContext, useContext, useEffect, useState, useCallback } from 'react';
 import type { ReactNode } from 'react';
-import {
-  doc, getDoc, setDoc
-} from 'firebase/firestore';
-import { db, isFirebaseConfigured } from '../lib/firebase';
 import { useAuth } from './AuthContext';
 import { DEFAULT_SCHEDULE } from '../lib/notifications';
 import type { NotificationSchedule } from '../lib/notifications';
@@ -99,131 +95,95 @@ export function UserDataProvider({ children }: { children: ReactNode }) {
   const [weightHistory, setWeightHistory] = useState<WeightEntry[]>([]);
   const [loading, setLoading] = useState(true);
 
-  const uid = user?.uid || 'guest';
-
-  const loadData = useCallback(async () => {
-    if (!user) { setLoading(false); return; }
+  // Re-load data when user changes
+  useEffect(() => {
+    if (!user) {
+      setProfile(null);
+      setDays({});
+      setWeightHistory([]);
+      setLoading(false);
+      return;
+    }
     setLoading(true);
-
-    if (isFirebaseConfigured && db && uid !== 'guest') {
-      try {
-        const ref = doc(db, 'users', uid);
-        const snap = await getDoc(ref);
-        if (snap.exists()) {
-          const data = snap.data() as any;
-          setProfile(data.profile || DEFAULT_PROFILE);
-          setDays(data.days || {});
-          setWeightHistory(data.weights || []);
-        } else {
-          setProfile(DEFAULT_PROFILE);
-        }
-      } catch (e) {
-        console.error('Firestore error, falling back to local:', e);
-        const local = getLocalData(uid);
-        setProfile(local.profile);
-        setDays(local.days);
-        setWeightHistory(local.weights);
-      }
-    } else {
-      const local = getLocalData(uid);
-      setProfile(local.profile);
-      setDays(local.days);
-      setWeightHistory(local.weights);
-    }
-
+    const data = getLocalData(user.uid);
+    setProfile({ ...data.profile, name: user.displayName || data.profile.name });
+    setDays(data.days || {});
+    setWeightHistory(data.weights || []);
     setLoading(false);
-  }, [user, uid]);
+  }, [user]);
 
-  useEffect(() => { loadData(); }, [loadData]);
+  const persist = useCallback((p: UserProfile, d: Record<string, DayData>, w: WeightEntry[]) => {
+    if (!user) return;
+    saveLocalData(user.uid, { profile: p, days: d, weights: w });
+  }, [user]);
 
-  const persist = useCallback(async (newProfile: UserProfile, newDays: Record<string, DayData>, newWeights: WeightEntry[]) => {
-    const data = { profile: newProfile, days: newDays, weights: newWeights };
-    saveLocalData(uid, data);
+  const saveProfile = async (updates: Partial<UserProfile>) => {
+    const current = profile || DEFAULT_PROFILE;
+    const next = { ...current, ...updates };
+    setProfile(next);
+    persist(next, days, weightHistory);
+  };
 
-    if (isFirebaseConfigured && db && uid !== 'guest') {
-      try {
-        await setDoc(doc(db, 'users', uid), data, { merge: true });
-      } catch (e) {
-        console.error('Failed to sync to Firestore:', e);
-      }
+  const addMealEntry = async (entry: Omit<MealEntry, 'id' | 'timestamp'>) => {
+    const id = Math.random().toString(36).substring(2, 9);
+    const timestamp = Date.now();
+    const newEntry: MealEntry = { ...entry, id, timestamp };
+
+    const dateKey = todayKey();
+    const currentDays = { ...days };
+    if (!currentDays[dateKey]) {
+      currentDays[dateKey] = { date: dateKey, meals: [], waterMl: 0 };
     }
-  }, [uid]);
-
-  const saveProfile = useCallback(async (updates: Partial<UserProfile>) => {
-    const newProfile = { ...(profile || DEFAULT_PROFILE), ...updates };
-    setProfile(newProfile);
-    await persist(newProfile, days, weightHistory);
-  }, [profile, days, weightHistory, persist]);
-
-  const addMealEntry = useCallback(async (entry: Omit<MealEntry, 'id' | 'timestamp'>) => {
-    const today = todayKey();
-    const newEntry: MealEntry = { ...entry, id: Date.now().toString(), timestamp: Date.now() };
-    const newDays = {
-      ...days,
-      [today]: {
-        date: today,
-        waterMl: days[today]?.waterMl || 0,
-        meals: [...(days[today]?.meals || []), newEntry],
-      },
+    
+    currentDays[dateKey] = {
+      ...currentDays[dateKey],
+      meals: [...currentDays[dateKey].meals, newEntry]
     };
-    setDays(newDays);
-    await persist(profile || DEFAULT_PROFILE, newDays, weightHistory);
-  }, [days, profile, weightHistory, persist]);
+    
+    setDays(currentDays);
+    persist(profile || DEFAULT_PROFILE, currentDays, weightHistory);
+  };
 
-  const removeMealEntry = useCallback(async (entryId: string) => {
-    const today = todayKey();
-    const newDays = {
-      ...days,
-      [today]: {
-        ...days[today],
-        date: today,
-        waterMl: days[today]?.waterMl || 0,
-        meals: (days[today]?.meals || []).filter(m => m.id !== entryId),
-      },
-    };
-    setDays(newDays);
-    await persist(profile || DEFAULT_PROFILE, newDays, weightHistory);
-  }, [days, profile, weightHistory, persist]);
+  const removeMealEntry = async (entryId: string) => {
+    const dateKey = todayKey();
+    const currentDays = { ...days };
+    if (currentDays[dateKey]) {
+      currentDays[dateKey] = {
+        ...currentDays[dateKey],
+        meals: currentDays[dateKey].meals.filter(m => m.id !== entryId)
+      };
+      setDays(currentDays);
+      persist(profile || DEFAULT_PROFILE, currentDays, weightHistory);
+    }
+  };
 
-  const setWater = useCallback(async (ml: number) => {
-    const today = todayKey();
-    const newDays = {
-      ...days,
-      [today]: {
-        ...days[today],
-        date: today,
-        meals: days[today]?.meals || [],
-        waterMl: Math.max(0, ml),
-      },
-    };
-    setDays(newDays);
-    await persist(profile || DEFAULT_PROFILE, newDays, weightHistory);
-  }, [days, profile, weightHistory, persist]);
+  const setWater = async (ml: number) => {
+    const dateKey = todayKey();
+    const currentDays = { ...days };
+    if (!currentDays[dateKey]) {
+      currentDays[dateKey] = { date: dateKey, meals: [], waterMl: ml };
+    } else {
+      currentDays[dateKey] = { ...currentDays[dateKey], waterMl: ml };
+    }
+    setDays(currentDays);
+    persist(profile || DEFAULT_PROFILE, currentDays, weightHistory);
+  };
 
-  const addWeightEntry = useCallback(async (weight: number) => {
-    const today = todayKey();
-    const newEntry: WeightEntry = { date: today, weight };
-    const newWeights = [...weightHistory.filter(w => w.date !== today), newEntry].sort((a, b) => a.date.localeCompare(b.date));
-    setWeightHistory(newWeights);
-    const newProfile = { ...(profile || DEFAULT_PROFILE), weight };
-    setProfile(newProfile);
-    await persist(newProfile, days, newWeights);
-  }, [weightHistory, profile, days, persist]);
+  const addWeightEntry = async (weight: number) => {
+    const dateKey = todayKey();
+    const nextHist = [...weightHistory.filter(w => w.date !== dateKey), { date: dateKey, weight }]
+      .sort((a, b) => a.date.localeCompare(b.date));
+    
+    setWeightHistory(nextHist);
+    await saveProfile({ weight }); // calls persist internally
+  };
 
-  const today = todayKey();
-  const todayData: DayData = days[today] || { date: today, meals: [], waterMl: 0 };
+  const todayData: DayData = days[todayKey()] || { date: todayKey(), meals: [], waterMl: 0 };
 
   return (
     <UserDataContext.Provider value={{
-      profile,
-      todayData,
-      weightHistory,
-      loading,
-      saveProfile,
-      addMealEntry,
-      removeMealEntry,
-      setWater,
-      addWeightEntry,
+      profile, todayData, weightHistory, loading,
+      saveProfile, addMealEntry, removeMealEntry, setWater, addWeightEntry
     }}>
       {children}
     </UserDataContext.Provider>
@@ -231,7 +191,7 @@ export function UserDataProvider({ children }: { children: ReactNode }) {
 }
 
 export function useUserData() {
-  const ctx = useContext(UserDataContext);
-  if (!ctx) throw new Error('useUserData must be used within UserDataProvider');
-  return ctx;
+  const context = useContext(UserDataContext);
+  if (!context) throw new Error('useUserData must be used within UserDataProvider');
+  return context;
 }

@@ -1,36 +1,18 @@
 import { createContext, useContext, useEffect, useState } from 'react';
 import type { ReactNode } from 'react';
-import type { User } from 'firebase/auth';
-import {
-  signInWithPopup,
-  signInWithRedirect,
-  getRedirectResult,
-  signInWithEmailAndPassword,
-  createUserWithEmailAndPassword,
-  signOut as firebaseSignOut,
-  onAuthStateChanged,
-  updateProfile,
-} from 'firebase/auth';
-import { Capacitor } from '@capacitor/core';
-import { auth, googleProvider, isFirebaseConfigured } from '../lib/firebase';
+import { useGoogleLogin } from '@react-oauth/google';
 
-// Lazy-load the Capacitor Google Auth plugin at runtime to avoid hard build dependency
-let _googleAuthPlugin: any = null;
-async function getGoogleAuthPlugin() {
-  if (_googleAuthPlugin) return _googleAuthPlugin;
-  try {
-    const mod = await import('@codetrix-studio/capacitor-google-auth');
-    _googleAuthPlugin = (mod as any).GoogleAuth;
-    return _googleAuthPlugin;
-  } catch {
-    return null;
-  }
+// Define a simple local User interface to replace Firebase's User type
+export interface LocalUser {
+  uid: string;
+  email: string | null;
+  displayName: string | null;
+  photoURL: string | null;
 }
 
 interface AuthContextType {
-  user: User | null;
+  user: LocalUser | null;
   loading: boolean;
-  isFirebaseReady: boolean;
   signInWithGoogle: () => Promise<void>;
   signInWithEmail: (email: string, password: string) => Promise<void>;
   signUpWithEmail: (email: string, password: string, name: string) => Promise<void>;
@@ -40,135 +22,142 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | null>(null);
 
-// Guest user for demo mode (no Firebase)
-const GUEST_USER_KEY = 'nutriai_guest_mode';
-
-const isNativePlatform = Capacitor.isNativePlatform();
+const ACTIVE_USER_KEY = 'nutriai_active_user';
+const USERS_DB_KEY = 'nutriai_users_db'; // to store credentials, though simple for now
 
 export function AuthProvider({ children }: { children: ReactNode }) {
-  const [user, setUser] = useState<User | null>(null);
+  const [user, setUser] = useState<LocalUser | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!isFirebaseConfigured || !auth) {
-      // Demo mode: check if guest mode was enabled
-      const guestMode = localStorage.getItem(GUEST_USER_KEY);
-      if (guestMode) {
-        setUser({ uid: 'guest', displayName: 'Usuário', email: null, photoURL: null } as unknown as User);
+    // Check if there is an active session
+    const active = localStorage.getItem(ACTIVE_USER_KEY);
+    if (active) {
+      try {
+        const parsed = JSON.parse(active);
+        setUser(parsed);
+      } catch {
+        localStorage.removeItem(ACTIVE_USER_KEY);
       }
-      setLoading(false);
-      return;
     }
-
-    // Handle redirect result (web fallback for Google sign-in)
-    getRedirectResult(auth)
-      .then((result) => {
-        if (result?.user) {
-          setUser(result.user);
-        }
-      })
-      .catch(() => {
-        // No redirect result or error — ignore
-      });
-
-    const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
-      setUser(firebaseUser);
-      setLoading(false);
-    });
-
-    return unsubscribe;
+    setLoading(false);
   }, []);
 
-  const signInWithGoogle = async () => {
-    if (!isFirebaseConfigured || !auth || !googleProvider) {
-      throw new Error('Firebase não configurado');
-    }
-
-    if (isNativePlatform) {
-      // --- Native Android / iOS via Capacitor Google Auth plugin ---
-      const plugin = await getGoogleAuthPlugin();
-      if (plugin) {
-        try {
-          await plugin.initialize({
-            clientId: import.meta.env.VITE_GOOGLE_WEB_CLIENT_ID || '',
-            scopes: ['profile', 'email'],
-            grantOfflineAccess: true,
-          });
-          const googleUser = await plugin.signIn();
-          const { signInWithCredential, GoogleAuthProvider: GAP } = await import('firebase/auth');
-          const credential = GAP.credential(googleUser.authentication.idToken);
-          await signInWithCredential(auth, credential);
-        } catch (err: any) {
-          if (err?.error === 'popup_closed_by_user' || err?.code === '12501') return; // user cancelled
-          throw err;
-        }
-        return;
-      }
-    }
-
-    // --- Web: try popup first, fall back to redirect ---
+  const handleGoogleSuccess = async (tokenResponse: any) => {
     try {
-      await signInWithPopup(auth, googleProvider);
-    } catch (err: any) {
-      // popup blocked or unsupported (e.g. in-app browser)
-      if (
-        err?.code === 'auth/popup-blocked' ||
-        err?.code === 'auth/operation-not-supported-in-this-environment'
-      ) {
-        await signInWithRedirect(auth, googleProvider);
-      } else {
-        throw err;
-      }
+      const res = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+        headers: { Authorization: `Bearer ${tokenResponse.access_token}` },
+      });
+      const data = await res.json();
+      
+      const realUser: LocalUser = {
+        uid: data.sub || 'google_' + Math.random().toString(36).substring(2, 9),
+        email: data.email,
+        displayName: data.name,
+        photoURL: data.picture,
+      };
+      
+      // Save Google Drive Access Token locally if we need to backup
+      localStorage.setItem('nutriai_google_token', tokenResponse.access_token);
+      localStorage.setItem(ACTIVE_USER_KEY, JSON.stringify(realUser));
+      setUser(realUser);
+    } catch (err) {
+      console.error('Failed to fetch user profile via google token', err);
+    }
+  };
+
+  const googleLoginReq = useGoogleLogin({
+    onSuccess: handleGoogleSuccess,
+    scope: 'email profile https://www.googleapis.com/auth/drive.file',
+  });
+
+  const signInWithGoogle = async () => {
+    googleLoginReq();
+  };
+
+  const getDb = () => {
+    try {
+      const db = localStorage.getItem(USERS_DB_KEY);
+      return db ? JSON.parse(db) : {};
+    } catch {
+      return {};
     }
   };
 
   const signInWithEmail = async (email: string, password: string) => {
-    if (!isFirebaseConfigured || !auth) throw new Error('Firebase não configurado');
-    await signInWithEmailAndPassword(auth, email, password);
+    await new Promise(res => setTimeout(res, 800));
+    const db = getDb();
+    if (db[email] && db[email].password === password) {
+      const activeUser: LocalUser = {
+        uid: db[email].uid,
+        email: email,
+        displayName: db[email].displayName || 'Usuário',
+        photoURL: null,
+      };
+      localStorage.setItem(ACTIVE_USER_KEY, JSON.stringify(activeUser));
+      setUser(activeUser);
+    } else {
+      throw new Error('user-not-found');
+    }
   };
 
   const signUpWithEmail = async (email: string, password: string, name: string) => {
-    if (!isFirebaseConfigured || !auth) throw new Error('Firebase não configurado');
-    const { user: newUser } = await createUserWithEmailAndPassword(auth, email, password);
-    await updateProfile(newUser, { displayName: name });
-    setUser({ ...newUser, displayName: name });
+    await new Promise(res => setTimeout(res, 800));
+    const db = getDb();
+    if (db[email]) {
+      throw new Error('email-already-in-use');
+    }
+    const newUid = 'local_' + Math.random().toString(36).substring(2, 9);
+    db[email] = { password, uid: newUid, displayName: name };
+    localStorage.setItem(USERS_DB_KEY, JSON.stringify(db));
+
+    const activeUser: LocalUser = {
+      uid: newUid,
+      email: email,
+      displayName: name,
+      photoURL: null,
+    };
+    localStorage.setItem(ACTIVE_USER_KEY, JSON.stringify(activeUser));
+    setUser(activeUser);
   };
 
   const signOut = async () => {
-    if (isNativePlatform) {
-      const plugin = await getGoogleAuthPlugin();
-      if (plugin) { try { await plugin.signOut(); } catch { /* ignore */ } }
-    }
-    if (isFirebaseConfigured && auth) {
-      await firebaseSignOut(auth);
-    }
-    localStorage.removeItem(GUEST_USER_KEY);
+    localStorage.removeItem(ACTIVE_USER_KEY);
     setUser(null);
   };
 
   const continueAsGuest = () => {
-    localStorage.setItem(GUEST_USER_KEY, 'true');
-    setUser({ uid: 'guest', displayName: 'Visitante', email: null, photoURL: null } as unknown as User);
+    const guestUser: LocalUser = {
+      uid: 'guest',
+      email: null,
+      displayName: 'Visitante (Modo Demo)',
+      photoURL: null,
+    };
+    localStorage.setItem(ACTIVE_USER_KEY, JSON.stringify(guestUser));
+    setUser(guestUser);
   };
 
   return (
-    <AuthContext.Provider value={{
-      user,
-      loading,
-      isFirebaseReady: isFirebaseConfigured,
-      signInWithGoogle,
-      signInWithEmail,
-      signUpWithEmail,
-      signOut,
-      continueAsGuest,
-    }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        loading,
+        signInWithGoogle,
+        signInWithEmail,
+        signUpWithEmail,
+        signOut,
+        continueAsGuest,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );
 }
 
 export function useAuth() {
-  const ctx = useContext(AuthContext);
-  if (!ctx) throw new Error('useAuth must be used within AuthProvider');
-  return ctx;
+  const context = useContext(AuthContext);
+  if (!context) {
+    throw new Error('useAuth must be used within an AuthProvider');
+  }
+  return context;
 }

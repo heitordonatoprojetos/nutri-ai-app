@@ -57,14 +57,23 @@ function AppContent() {
   );
 }
 
+import { GoogleOAuthProvider } from '@react-oauth/google';
+import { BackupProvider } from './contexts/BackupContext';
+
 export default function App() {
+  const clientId = import.meta.env.VITE_GOOGLE_WEB_CLIENT_ID || 'dummy-client-id.apps.googleusercontent.com';
+
   return (
-    <BrowserRouter>
+    <GoogleOAuthProvider clientId={clientId}>
+      <BrowserRouter>
       <AuthProvider>
-        <UserDataProvider>
-          <AppContent />
-        </UserDataProvider>
+        <BackupProvider>
+          <UserDataProvider>
+            <AppContent />
+          </UserDataProvider>
+        </BackupProvider>
       </AuthProvider>
-    </BrowserRouter>
+      </BrowserRouter>
+    </GoogleOAuthProvider>
   );
 }

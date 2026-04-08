@@ -18,7 +18,7 @@ function GoogleLogo() {
 }
 
 export default function Login() {
-  const { signInWithGoogle, signInWithEmail, signUpWithEmail, continueAsGuest, isFirebaseReady } = useAuth();
+  const { signInWithGoogle, signInWithEmail, signUpWithEmail, continueAsGuest } = useAuth();
   const navigate = useNavigate();
   const [mode, setMode] = useState<Mode>('login');
   const [name, setName] = useState('');
@@ -46,12 +46,8 @@ export default function Login() {
         setError('Email ou senha incorretos.');
       } else if (msg.includes('email-already-in-use')) {
         setError('Este email já está cadastrado.');
-      } else if (msg.includes('weak-password')) {
-        setError('A senha deve ter pelo menos 6 caracteres.');
-      } else if (msg.includes('não configurado') || msg.includes('not configured')) {
-        setError('Firebase não configurado. Use o modo visitante.');
       } else {
-        setError('Erro ao entrar. Tente novamente.');
+        setError('Erro ao entrar. Verifique os dados.');
       }
     }
     setLoading(false);
@@ -64,14 +60,7 @@ export default function Login() {
       await signInWithGoogle();
       navigate('/dashboard');
     } catch (err: any) {
-      const msg = err?.code || err?.message || '';
-      if (msg.includes('popup-closed') || msg.includes('cancelled') || msg === '') {
-        // User closed the popup — no error needed
-      } else if (msg.includes('não configurado') || msg.includes('not configured')) {
-        setError('Firebase não configurado. Verifique as variáveis de ambiente.');
-      } else {
-        setError('Não foi possível entrar com Google. Tente novamente.');
-      }
+      setError('Problema ao conectar com o Google local.');
     }
     setGoogleLoading(false);
   };
@@ -130,54 +119,50 @@ export default function Login() {
       }}>
 
         {/* ─── Google Sign-In Button ─── */}
-        {isFirebaseReady && (
-          <>
-            <button
-              id="btn-google-signin"
-              onClick={handleGoogle}
-              disabled={googleLoading || loading}
-              style={{
-                width: '100%',
-                padding: '14px 20px',
-                background: googleLoading ? 'rgba(255,255,255,0.85)' : 'white',
-                border: 'none',
-                borderRadius: 16,
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                gap: 12,
-                cursor: googleLoading ? 'wait' : 'pointer',
-                fontSize: 15,
-                fontWeight: 600,
-                color: '#333',
-                marginBottom: 20,
-                boxShadow: '0 2px 12px rgba(0,0,0,0.25)',
-                transition: 'transform 0.15s, box-shadow 0.15s',
-                transform: 'scale(1)',
-              }}
-              onMouseEnter={e => (e.currentTarget.style.transform = 'scale(1.02)')}
-              onMouseLeave={e => (e.currentTarget.style.transform = 'scale(1)')}
-            >
-              {googleLoading ? (
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-                  <circle cx="12" cy="12" r="9" stroke="#4285F4" strokeWidth="3" strokeLinecap="round"
-                    strokeDasharray="28 56"
-                    style={{ transformOrigin: 'center', animation: 'spin 1s linear infinite' }} />
-                </svg>
-              ) : (
-                <GoogleLogo />
-              )}
-              {googleLoading ? 'Entrando...' : 'Continuar com Google'}
-            </button>
-            <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+        <button
+          id="btn-google-signin"
+          onClick={handleGoogle}
+          disabled={googleLoading || loading}
+          style={{
+            width: '100%',
+            padding: '14px 20px',
+            background: googleLoading ? 'rgba(255,255,255,0.85)' : 'white',
+            border: 'none',
+            borderRadius: 16,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 12,
+            cursor: googleLoading ? 'wait' : 'pointer',
+            fontSize: 15,
+            fontWeight: 600,
+            color: '#333',
+            marginBottom: 20,
+            boxShadow: '0 2px 12px rgba(0,0,0,0.25)',
+            transition: 'transform 0.15s, box-shadow 0.15s',
+            transform: 'scale(1)',
+          }}
+          onMouseEnter={e => (e.currentTarget.style.transform = 'scale(1.02)')}
+          onMouseLeave={e => (e.currentTarget.style.transform = 'scale(1)')}
+        >
+          {googleLoading ? (
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+              <circle cx="12" cy="12" r="9" stroke="#4285F4" strokeWidth="3" strokeLinecap="round"
+                strokeDasharray="28 56"
+                style={{ transformOrigin: 'center', animation: 'spin 1s linear infinite' }} />
+            </svg>
+          ) : (
+            <GoogleLogo />
+          )}
+          {googleLoading ? 'Entrando...' : 'Continuar com Google'}
+        </button>
+        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
 
-            <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
-              <div style={{ flex: 1, height: 1, background: 'rgba(255,255,255,0.15)' }} />
-              <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: 13 }}>ou entre com email</span>
-              <div style={{ flex: 1, height: 1, background: 'rgba(255,255,255,0.15)' }} />
-            </div>
-          </>
-        )}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 20 }}>
+          <div style={{ flex: 1, height: 1, background: 'rgba(255,255,255,0.15)' }} />
+          <span style={{ color: 'rgba(255,255,255,0.4)', fontSize: 13 }}>ou entre com email</span>
+          <div style={{ flex: 1, height: 1, background: 'rgba(255,255,255,0.15)' }} />
+        </div>
 
         {/* ─── Email / Password Form ─── */}
         <form onSubmit={handleSubmit}>

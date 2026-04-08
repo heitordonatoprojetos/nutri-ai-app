@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
-import { User, Scale, Bell, LogOut, ChevronRight, Check, X, Camera } from 'lucide-react';
+import { User, Scale, Bell, LogOut, ChevronRight, Check, X, Camera, Cloud, RefreshCw } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useUserData } from '../contexts/UserDataContext';
+import { useBackup } from '../contexts/BackupContext';
 import { useNavigate } from 'react-router-dom';
 import {
   requestNotificationPermission,
@@ -13,6 +14,7 @@ import type { NotificationSchedule } from '../lib/notifications';
 export default function Profile() {
   const { user, signOut } = useAuth();
   const { profile, saveProfile } = useUserData();
+  const { isDriveConnected, syncing, lastSync, syncToDrive, restoreFromDrive } = useBackup();
   const navigate = useNavigate();
 
   const [editSection, setEditSection] = useState<string | null>(null);
@@ -227,6 +229,63 @@ export default function Profile() {
         )}
         {!notifEnabled && (
           <p style={{ color: 'var(--text-muted)', fontSize: 13 }}>Ative para receber lembretes de refeições e água.</p>
+        )}
+      </div>
+
+      {/* Backup / Drive */}
+      <div className="card" style={{ marginBottom: 16 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12 }}>
+          <Cloud size={20} color="var(--accent-primary)" />
+          <h3 style={{ margin: 0 }}>Backup no Google Drive</h3>
+        </div>
+        {!isDriveConnected && (
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 0' }}>
+            <div>
+              <p style={{ margin: '0 0 4px', fontSize: 13, color: 'var(--text-main)' }}>Salvar dados na nuvem</p>
+              <p style={{ margin: 0, fontSize: 11, color: 'var(--text-muted)' }}>Faça login (abaixo) para testar esta função.</p>
+            </div>
+            <span style={{ fontSize: 12, padding: '4px 8px', background: 'var(--bg-secondary)', borderRadius: 8, color: 'var(--text-muted)' }}>Desconectado</span>
+          </div>
+        )}
+        {isDriveConnected && (
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+            <p style={{ color: 'var(--text-main)', fontSize: 13, margin: 0 }}>
+              Sua conta está conectada e pronta para backup.
+            </p>
+            <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+              <button 
+                onClick={async () => {
+                  const dataToSend = { profile, lastExport: new Date() }; // Example payload
+                  await syncToDrive(dataToSend);
+                  alert('Backup concluído com sucesso!');
+                }}
+                disabled={syncing}
+                style={{
+                  flex: 1, padding: '10px', borderRadius: 10, background: 'var(--accent-primary)',
+                  color: 'white', border: 'none', fontWeight: 600, fontSize: 13, cursor: syncing ? 'wait' : 'pointer',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, opacity: syncing ? 0.7 : 1
+                }}
+              >
+                <Cloud size={16} /> Salvar Agora
+              </button>
+              <button 
+                onClick={async () => {
+                  const data = await restoreFromDrive();
+                  if (data) alert('Mock Restore disparado! ' + (data.profile?.name || ''));
+                  else alert('Nenhum backup encontrado.');
+                }}
+                disabled={syncing}
+                style={{
+                  flex: 1, padding: '10px', borderRadius: 10, background: 'var(--bg-secondary)', border: '1px solid var(--border-color)',
+                  color: 'var(--text-main)', fontWeight: 600, fontSize: 13, cursor: syncing ? 'wait' : 'pointer',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 6, opacity: syncing ? 0.7 : 1
+                }}
+              >
+                <RefreshCw size={16} /> Restaurar
+              </button>
+            </div>
+            {lastSync && <p style={{ fontSize: 11, color: 'var(--text-muted)', margin: 0, textAlign: 'center' }}>Último backup: {new Date(lastSync).toLocaleString()}</p>}
+          </div>
         )}
       </div>
 
