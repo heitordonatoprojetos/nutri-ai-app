@@ -13,8 +13,8 @@ import type { NotificationSchedule } from '../lib/notifications';
 
 export default function Profile() {
   const { user, signOut } = useAuth();
-  const { profile, saveProfile } = useUserData();
-  const { isDriveConnected, syncing, lastSync, syncToDrive, restoreFromDrive } = useBackup();
+  const { profile, saveProfile, exportAllData, importAllData } = useUserData();
+  const { isDriveConnected, syncing, lastSync, syncToDrive, restoreFromDrive, connectDrive, disconnectDrive } = useBackup();
   const navigate = useNavigate();
 
   const [editSection, setEditSection] = useState<string | null>(null);
@@ -240,24 +240,41 @@ export default function Profile() {
         </div>
         {!isDriveConnected && (
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '10px 0' }}>
-            <div>
+            <div style={{ flex: 1 }}>
               <p style={{ margin: '0 0 4px', fontSize: 13, color: 'var(--text-main)' }}>Salvar dados na nuvem</p>
-              <p style={{ margin: 0, fontSize: 11, color: 'var(--text-muted)' }}>Faça login (abaixo) para testar esta função.</p>
+              <p style={{ margin: 0, fontSize: 11, color: 'var(--text-muted)' }}>Conecte sua conta para garantir o backup.</p>
             </div>
-            <span style={{ fontSize: 12, padding: '4px 8px', background: 'var(--bg-secondary)', borderRadius: 8, color: 'var(--text-muted)' }}>Desconectado</span>
+            <button 
+              onClick={() => connectDrive()}
+              style={{
+                padding: '8px 16px', borderRadius: 10, background: 'var(--accent-primary)',
+                color: 'white', border: 'none', fontWeight: 600, fontSize: 12, cursor: 'pointer'
+              }}
+            >
+              Conectar
+            </button>
           </div>
         )}
         {isDriveConnected && (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-            <p style={{ color: 'var(--text-main)', fontSize: 13, margin: 0 }}>
-              Sua conta está conectada e pronta para backup.
-            </p>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+              <p style={{ color: 'var(--text-main)', fontSize: 13, margin: 0 }}>
+                Drive conectado com sucesso.
+              </p>
+              <button 
+                onClick={() => disconnectDrive()}
+                style={{ background: 'none', border: 'none', color: '#FF5A5F', fontSize: 11, cursor: 'pointer', padding: 0 }}
+              >
+                Desconectar
+              </button>
+            </div>
             <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
               <button 
                 onClick={async () => {
-                  const dataToSend = { profile, lastExport: new Date() }; // Example payload
-                  await syncToDrive(dataToSend);
-                  alert('Backup concluído com sucesso!');
+                  const data = exportAllData();
+                  const success = await syncToDrive(data);
+                  if (success) alert('Backup completo concluído com sucesso!');
+                  else alert('Falha ao realizar backup.');
                 }}
                 disabled={syncing}
                 style={{
@@ -271,8 +288,12 @@ export default function Profile() {
               <button 
                 onClick={async () => {
                   const data = await restoreFromDrive();
-                  if (data) alert('Mock Restore disparado! ' + (data.profile?.name || ''));
-                  else alert('Nenhum backup encontrado.');
+                  if (data) {
+                    await importAllData(data);
+                    alert('Dados restaurados com sucesso!');
+                  } else {
+                    alert('Nenhum backup encontrado no Drive.');
+                  }
                 }}
                 disabled={syncing}
                 style={{

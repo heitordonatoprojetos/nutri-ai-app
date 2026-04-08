@@ -1,5 +1,6 @@
 import { createContext, useContext, useCallback, useState } from 'react';
 import type { ReactNode } from 'react';
+import { useGoogleLogin } from '@react-oauth/google';
 
 interface BackupContextType {
   syncing: boolean;
@@ -7,6 +8,8 @@ interface BackupContextType {
   syncToDrive: (data: any) => Promise<boolean>;
   restoreFromDrive: () => Promise<any | null>;
   isDriveConnected: boolean;
+  connectDrive: () => void;
+  disconnectDrive: () => void;
 }
 
 const BackupContext = createContext<BackupContextType | null>(null);
@@ -16,6 +19,20 @@ export function BackupProvider({ children }: { children: ReactNode }) {
   const [lastSync, setLastSync] = useState<string | null>(localStorage.getItem('nutriai_last_sync'));
 
   const getToken = () => localStorage.getItem('nutriai_google_token');
+
+  const connectDrive = useGoogleLogin({
+    onSuccess: (tokenResponse) => {
+      localStorage.setItem('nutriai_google_token', tokenResponse.access_token);
+      setLastSync(localStorage.getItem('nutriai_last_sync')); // Just to trigger re-render
+      window.location.reload(); // Hard reload or state update to refresh UI across contexts
+    },
+    scope: 'https://www.googleapis.com/auth/drive.file',
+  });
+
+  const disconnectDrive = () => {
+    localStorage.removeItem('nutriai_google_token');
+    window.location.reload();
+  };
 
   const getDriveFileId = async (token: string, filename: string): Promise<string | null> => {
     const q = encodeURIComponent(`name='${filename}' and trashed=false`);
@@ -121,7 +138,9 @@ export function BackupProvider({ children }: { children: ReactNode }) {
       lastSync,
       syncToDrive,
       restoreFromDrive,
-      isDriveConnected: !!getToken()
+      isDriveConnected: !!getToken(),
+      connectDrive,
+      disconnectDrive
     }}>
       {children}
     </BackupContext.Provider>

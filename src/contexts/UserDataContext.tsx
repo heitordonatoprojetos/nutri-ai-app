@@ -53,6 +53,8 @@ interface UserDataContextType {
   removeMealEntry: (entryId: string) => Promise<void>;
   setWater: (ml: number) => Promise<void>;
   addWeightEntry: (weight: number) => Promise<void>;
+  exportAllData: () => any;
+  importAllData: (data: any) => Promise<void>;
 }
 
 const UserDataContext = createContext<UserDataContextType | null>(null);
@@ -178,12 +180,37 @@ export function UserDataProvider({ children }: { children: ReactNode }) {
     await saveProfile({ weight }); // calls persist internally
   };
 
+  const exportAllData = useCallback(() => {
+    return {
+      profile: profile || DEFAULT_PROFILE,
+      days: days || {},
+      weights: weightHistory || []
+    };
+  }, [profile, days, weightHistory]);
+
+  const importAllData = async (data: any) => {
+    if (!data || typeof data !== 'object') return;
+    
+    // Simple validation
+    const newProfile = data.profile || DEFAULT_PROFILE;
+    const newDays = data.days || {};
+    const newWeights = data.weights || [];
+
+    setProfile(newProfile);
+    setDays(newDays);
+    setWeightHistory(newWeights);
+    
+    // Persist immediately
+    persist(newProfile, newDays, newWeights);
+  };
+
   const todayData: DayData = days[todayKey()] || { date: todayKey(), meals: [], waterMl: 0 };
 
   return (
     <UserDataContext.Provider value={{
       profile, todayData, weightHistory, loading,
-      saveProfile, addMealEntry, removeMealEntry, setWater, addWeightEntry
+      saveProfile, addMealEntry, removeMealEntry, setWater, addWeightEntry,
+      exportAllData, importAllData
     }}>
       {children}
     </UserDataContext.Provider>
