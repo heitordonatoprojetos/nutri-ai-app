@@ -109,13 +109,20 @@ jobs:
           grep "com.android.tools.build" build.gradle
 
       - name: Build Debug APK
+        id: build-step
         working-directory: ./android
         env:
           JAVA_HOME: ${{ steps.setup-java.outputs.path }}
         run: |
-          echo "Using JAVA_HOME from setup-java: $JAVA_HOME"
-          java -version
-          ./gradlew assembleDebug --no-daemon --stacktrace --parallel
+          echo "Starting build with Gradle 8.2.1 and Java 17..."
+          ./gradlew assembleDebug --no-daemon --stacktrace --parallel > build.log 2>&1
+
+      - name: Upload Build Log on Failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-failure-log
+          path: android/build.log
 
       - name: Verify APK was created
         run: |
@@ -124,11 +131,12 @@ jobs:
             echo "✅ APK built successfully!"
             ls -lh "$APK_PATH"
           else
-            echo "❌ APK not found!"
+            echo "❌ APK not found! Check build-failure-log artifact."
             exit 1
           fi
 
       - name: Upload APK
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: NutriAI-v1.01-debug
