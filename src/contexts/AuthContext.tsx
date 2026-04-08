@@ -3,13 +3,29 @@ import type { ReactNode } from 'react';
 import type { User } from 'firebase/auth';
 import {
   signInWithPopup,
+  signInWithRedirect,
+  getRedirectResult,
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   signOut as firebaseSignOut,
   onAuthStateChanged,
   updateProfile,
 } from 'firebase/auth';
+import { Capacitor } from '@capacitor/core';
 import { auth, googleProvider, isFirebaseConfigured } from '../lib/firebase';
+
+// Lazy-load the Capacitor Google Auth plugin at runtime to avoid hard build dependency
+let _googleAuthPlugin: any = null;
+async function getGoogleAuthPlugin() {
+  if (_googleAuthPlugin) return _googleAuthPlugin;
+  try {
+    const mod = await import('@codetrix-studio/capacitor-google-auth');
+    _googleAuthPlugin = (mod as any).GoogleAuth;
+    return _googleAuthPlugin;
+  } catch {
+    return null;
+  }
+}
 
 interface AuthContextType {
   user: User | null;
@@ -27,6 +43,8 @@ const AuthContext = createContext<AuthContextType | null>(null);
 // Guest user for demo mode (no Firebase)
 const GUEST_USER_KEY = 'nutriai_guest_mode';
 
+const isNativePlatform = Capacitor.isNativePlatform();
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
@@ -36,12 +54,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       // Demo mode: check if guest mode was enabled
       const guestMode = localStorage.getItem(GUEST_USER_KEY);
       if (guestMode) {
-        // Create a fake user object for demo purposes
         setUser({ uid: 'guest', displayName: 'Usuário', email: null, photoURL: null } as unknown as User);
       }
       setLoading(false);
       return;
     }
+
+    // Handle redirect result (web fallback for Google sign-in)
+    getRedirectResult(auth)
+      .then((result) => {
+        if (result?.user) {
+          setUser(result.user);
+        }
+      })
+      .catch(() => {
+        // No redirect result or error — ignore
+      });
 
     const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
       setUser(firebaseUser);
@@ -55,7 +83,43 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     if (!isFirebaseConfigured || !auth || !googleProvider) {
       throw new Error('Firebase não configurado');
     }
-    await signInWithPopup(auth, googleProvider);
+
+    if (isNativePlatform) {
+      // --- Native Android / iOS via Capacitor Google Auth plugin ---
+      const plugin = await getGoogleAuthPlugin();
+      if (plugin) {
+        try {
+          await plugin.initialize({
+            clientId: import.meta.env.VITE_GOOGLE_WEB_CLIENT_ID || '',
+            scopes: ['profile', 'email'],
+            grantOfflineAccess: true,
+          });
+          const googleUser = await plugin.signIn();
+          const { signInWithCredential, GoogleAuthProvider: GAP } = await import('firebase/auth');
+          const credential = GAP.credential(googleUser.authentication.idToken);
+          await signInWithCredential(auth, credential);
+        } catch (err: any) {
+          if (err?.error === 'popup_closed_by_user' || err?.code === '12501') return; // user cancelled
+          throw err;
+        }
+        return;
+      }
+    }
+
+    // --- Web: try popup first, fall back to redirect ---
+    try {
+      await signInWithPopup(auth, googleProvider);
+    } catch (err: any) {
+      // popup blocked or unsupported (e.g. in-app browser)
+      if (
+        err?.code === 'auth/popup-blocked' ||
+        err?.code === 'auth/operation-not-supported-in-this-environment'
+      ) {
+        await signInWithRedirect(auth, googleProvider);
+      } else {
+        throw err;
+      }
+    }
   };
 
   const signInWithEmail = async (email: string, password: string) => {
@@ -71,6 +135,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   const signOut = async () => {
+    if (isNativePlatform) {
+      const plugin = await getGoogleAuthPlugin();
+      if (plugin) { try { await plugin.signOut(); } catch { /* ignore */ } }
+    }
     if (isFirebaseConfigured && auth) {
       await firebaseSignOut(auth);
     }

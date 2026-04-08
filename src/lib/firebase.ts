@@ -12,7 +12,10 @@ const firebaseConfig = {
 };
 
 // Only initialize Firebase if config is provided
-const isFirebaseConfigured = firebaseConfig.apiKey && firebaseConfig.apiKey !== 'your_api_key_here';
+const isFirebaseConfigured = !!(
+  firebaseConfig.apiKey &&
+  firebaseConfig.apiKey !== 'your_api_key_here'
+);
 
 let app: ReturnType<typeof initializeApp> | null = null;
 let auth: ReturnType<typeof getAuth> | null = null;
@@ -24,6 +27,9 @@ if (isFirebaseConfigured) {
   auth = getAuth(app);
   db = getFirestore(app);
   googleProvider = new GoogleAuthProvider();
+  // Request additional user info scopes
+  googleProvider.addScope('profile');
+  googleProvider.addScope('email');
 }
 
 export { auth, db, googleProvider, isFirebaseConfigured };
