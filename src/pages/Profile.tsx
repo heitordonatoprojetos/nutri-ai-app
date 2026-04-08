@@ -14,7 +14,7 @@ import type { NotificationSchedule } from '../lib/notifications';
 export default function Profile() {
   const { user, signOut } = useAuth();
   const { profile, saveProfile, exportAllData, importAllData } = useUserData();
-  const { isDriveConnected, syncing, lastSync, syncToDrive, restoreFromDrive, connectDrive, disconnectDrive } = useBackup();
+  const { isDriveConnected, syncing, lastSync, syncToDrive, restoreFromDrive, connectDrive, disconnectDrive, syncError } = useBackup();
   const navigate = useNavigate();
 
   const [editSection, setEditSection] = useState<string | null>(null);
@@ -305,6 +305,19 @@ export default function Profile() {
                 <RefreshCw size={16} /> Restaurar
               </button>
             </div>
+            {syncError && (
+              <p style={{
+                fontSize: 11,
+                color: '#ef4444',
+                margin: 0,
+                textAlign: 'center',
+                padding: '8px 12px',
+                backgroundColor: 'rgba(239, 68, 68, 0.1)',
+                borderRadius: 8
+              }}>
+                ⚠️ {syncError}
+              </p>
+            )}
             {lastSync && <p style={{ fontSize: 11, color: 'var(--text-muted)', margin: 0, textAlign: 'center' }}>Último backup: {new Date(lastSync).toLocaleString()}</p>}
           </div>
         )}
