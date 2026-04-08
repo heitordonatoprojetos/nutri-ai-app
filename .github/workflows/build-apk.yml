@@ -6,20 +6,18 @@ on:
   workflow_dispatch:
 
 jobs:
-  build:
+  # ──────────────────────────────────────────────
+  # JOB 1: Validate & build the web app (React/Vite)
+  # ──────────────────────────────────────────────
+  build-web:
+    name: Build Web (React + Vite)
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup Java 17
-        uses: actions/setup-java@v4
-        with:
-          distribution: 'zulu'
-          java-version: '17'
-
-      - name: Setup Node.js
+      - name: Setup Node.js 22
         uses: actions/setup-node@v4
         with:
           node-version: '22'
@@ -28,10 +26,59 @@ jobs:
       - name: Install dependencies
         run: npm ci --legacy-peer-deps
 
-      - name: Build Web App
+      - name: TypeScript check (zero type errors allowed)
+        run: npx tsc --noEmit
+
+      - name: Build web assets
         run: npm run build
 
-      - name: Capacitor Sync
+      # Pass the built dist/ folder to the Android job
+      - name: Upload dist artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: web-dist
+          path: dist/
+          retention-days: 1
+
+  # ──────────────────────────────────────────────
+  # JOB 2: Build the Android APK using Capacitor
+  # ──────────────────────────────────────────────
+  build-apk:
+    name: Build Android APK
+    needs: build-web
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      # ── Java must come BEFORE Gradle operations ──
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'zulu'
+          java-version: '17'
+
+      - name: Verify Java version
+        run: java -version
+
+      - name: Setup Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci --legacy-peer-deps
+
+      # Download the pre-built web assets from Job 1
+      - name: Download web dist
+        uses: actions/download-artifact@v4
+        with:
+          name: web-dist
+          path: dist/
+
+      - name: Capacitor sync Android
         run: npx cap sync android
 
       - name: Cache Gradle packages
@@ -40,18 +87,41 @@ jobs:
           path: |
             ~/.gradle/caches
             ~/.gradle/wrapper
-          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle*', '**/gradle-wrapper.properties') }}
+          key: ${{ runner.os }}-gradle-${{ hashFiles('android/**/*.gradle*', 'android/**/gradle-wrapper.properties') }}
           restore-keys: |
             ${{ runner.os }}-gradle-
+
+      - name: Inject mock google-services.json for Firebase compilation
+        run: |
+          echo "{\"project_info\":{\"project_number\":\"123\",\"firebase_url\":\"https://mock.firebaseio.com\",\"project_id\":\"mock-id\",\"storage_bucket\":\"mock.appspot.com\"},\"client\":[{\"client_info\":{\"mobilesdk_app_id\":\"1:123:android:abc\",\"android_client_info\":{\"package_name\":\"com.nutriai.app\"}},\"oauth_client\":[],\"api_key\":[{\"current_key\":\"mock_key\"}],\"services\":{\"appinvite_service\":{\"other_platform_oauth_client\":[]}}}]}" > android/app/google-services.json
 
       - name: Make gradlew executable
         run: chmod +x android/gradlew
 
+      - name: Verify Android Gradle Plugin compatibility
+        working-directory: ./android
+        run: |
+          echo "=== Gradle version ==="
+          ./gradlew --version
+          echo "=== AGP version ==="
+          grep "com.android.tools.build" build.gradle
+
       - name: Build Debug APK
         working-directory: ./android
-        run: ./gradlew assembleDebug --no-daemon
+        run: ./gradlew assembleDebug --no-daemon --stacktrace
 
-      - name: Upload APK Artifact
+      - name: Verify APK was created
+        run: |
+          APK_PATH="android/app/build/outputs/apk/debug/app-debug.apk"
+          if [ -f "$APK_PATH" ]; then
+            echo "✅ APK built successfully!"
+            ls -lh "$APK_PATH"
+          else
+            echo "❌ APK not found!"
+            exit 1
+          fi
+
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: NutriAI-v1.01-debug
