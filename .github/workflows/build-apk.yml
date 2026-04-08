@@ -54,10 +54,12 @@ jobs:
 
       # ── Java must come BEFORE Gradle operations ──
       - name: Setup Java 17
+        id: setup-java
         uses: actions/setup-java@v4
         with:
           distribution: 'zulu'
           java-version: '17'
+          cache: 'gradle'
 
       - name: Verify Java version
         run: java -version
@@ -108,12 +110,12 @@ jobs:
 
       - name: Build Debug APK
         working-directory: ./android
+        env:
+          JAVA_HOME: ${{ steps.setup-java.outputs.path }}
         run: |
-          export JAVA_HOME=$JAVA_HOME_17_X64
-          export PATH=$JAVA_HOME/bin:$PATH
-          echo "Using JAVA_HOME: $JAVA_HOME"
+          echo "Using JAVA_HOME from setup-java: $JAVA_HOME"
           java -version
-          ./gradlew assembleDebug --no-daemon --stacktrace
+          ./gradlew assembleDebug --no-daemon --stacktrace --parallel
 
       - name: Verify APK was created
         run: |
