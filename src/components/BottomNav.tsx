@@ -1,9 +1,8 @@
 import { Link, useLocation } from 'react-router-dom';
-import { Home, Utensils, Droplet, User, Camera } from 'lucide-react';
+import { Home, Utensils, Camera, TrendingUp, User } from 'lucide-react';
 
 export default function BottomNav() {
   const location = useLocation();
-
   const isActive = (path: string) => location.pathname === path ? 'active' : '';
 
   return (
@@ -12,7 +11,7 @@ export default function BottomNav() {
         <Home size={24} />
         <span>Início</span>
       </Link>
-      
+
       <Link to="/diet" className={`nav-item ${isActive('/diet')}`}>
         <Utensils size={24} />
         <span>Dieta</span>
@@ -23,24 +22,20 @@ export default function BottomNav() {
         <div style={{
           background: 'var(--accent-primary)',
           borderRadius: '50%',
-          width: '60px',
-          height: '60px',
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          color: 'white',
-          boxShadow: 'var(--shadow-lg)'
+          width: '60px', height: '60px',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          color: 'white', boxShadow: 'var(--shadow-lg)',
         }}>
           <Camera size={28} />
         </div>
       </Link>
-      
+
       <Link to="/progress" className={`nav-item ${isActive('/progress')}`}>
-        <Droplet size={24} />
-        <span>Água</span>
+        <TrendingUp size={24} />
+        <span>Progresso</span>
       </Link>
 
-      <Link to="/dashboard" className={`nav-item`}>
+      <Link to="/profile" className={`nav-item ${isActive('/profile')}`}>
         <User size={24} />
         <span>Perfil</span>
       </Link>
